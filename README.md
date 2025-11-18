@@ -12,7 +12,7 @@ Modern face recognition-based attendance tracking with automatic reporting and a
 - **Face Recognition** - OpenCV-based detection and recognition (lightweight, no complex dependencies)
 - **Real-time Attendance** - Automatic marking with live camera feed
 - **Single & Live Mode** - Quick capture or continuous recognition
-- **Audio Feedback** - Text-to-speech announcements
+- **Audio Feedback** - Text-to-speech announcements with time-based greetings
 
 ### Dashboard & Analytics
 - **Interactive Dashboard** - Real-time statistics with Plotly charts
@@ -158,7 +158,7 @@ SESSION_TIMEOUT_MINUTES = 30
    - **Live Recognition** - Continuous recognition (5-60 seconds)
 3. System detects faces, compares with database
 4. Auto-marks attendance if match found
-5. Provides audio confirmation
+5. Provides audio confirmation with time-based greetings
 
 ### Viewing Reports
 
@@ -399,9 +399,9 @@ This project is available for personal and commercial use.
 ## Support
 
 ### Documentation
-- `QUICKSTART.md` - Quick start guide
+- `README.md` - This comprehensive guide
 - `INSTALL_DLIB_GUIDE.md` - Advanced face_recognition installation
-- `FACE_RECOGNITION_ADDED.md` - Implementation details
+- `IMPLEMENTATION_NOTES.md` - Implementation details
 
 ### Logs
 - Check `logs/app.log` for detailed error information
@@ -423,4 +423,6 @@ See Troubleshooting section above.
 
 **Built with ❤️ for efficient attendance management**
 
-Last Updated: November 12, 2025
+Repository: [Smart-attendance-management-system](https://github.com/amosashore/Smart-attendance-management-system)
+
+Last Updated: November 18, 2025
