@@ -18,7 +18,7 @@ from ui_recognition import recognition_ui, show_today_attendance
 from auth import admin_login, AuthManager
 from config import PAGE_TITLE, PAGE_ICON, Config
 from logger import get_logger
-from audio_utils import play_chime, audio_manager, get_time_based_greeting
+from audio_utils import play_chime, audio_manager, get_time_based_greeting, speak_nigerian_greeting
 
 logger = get_logger(__name__)
 
@@ -63,7 +63,8 @@ def initialize_app():
             st.session_state.app_started = True
             play_chime()
             greeting = get_time_based_greeting()
-            audio_manager.speak(f"{greeting}! Welcome to the Smart Attendance System. Please log in to continue.")
+            from audio_utils import _queue_speech
+            _queue_speech(f"{greeting}! Welcome to the Smart Attendance System. Please log in to continue.")
         
         return True
     except Exception as e:

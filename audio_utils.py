@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 import time
+import queue
 
 from config import CHIME_PATH, ENABLE_AUDIO, SPEECH_RATE, AUDIO_VOLUME
 from logger import get_logger
@@ -21,6 +22,11 @@ except Exception as e:
     logger.warning(f"Pygame mixer initialization failed: {e}")
     PYGAME_AVAILABLE = False
 
+# Global speech queue
+_speech_queue = queue.Queue()
+_speech_worker_started = False
+_speech_lock = threading.Lock()
+
 
 class AudioManager:
     """Manages audio playback and text-to-speech"""
@@ -31,15 +37,36 @@ class AudioManager:
         self._init_tts()
     
     def _init_tts(self):
-        """Initialize text-to-speech engine"""
+        """Initialize text-to-speech engine with female voice preference"""
         try:
             self.tts_engine = pyttsx3.init()
             self.tts_engine.setProperty("rate", SPEECH_RATE)
             self.tts_engine.setProperty("volume", AUDIO_VOLUME)
+            
+            # Try to set female voice
+            self._set_female_voice()
+            
             logger.info("Text-to-speech engine initialized")
         except Exception as e:
             logger.error(f"Failed to initialize TTS: {e}")
             self.tts_engine = None
+    
+    def _set_female_voice(self):
+        """Set female voice if available"""
+        try:
+            voices = self.tts_engine.getProperty('voices')
+            
+            # Look for female voices
+            for voice in voices:
+                voice_info = f"{voice.name.lower()} {voice.id.lower()}"
+                if 'female' in voice_info or 'zira' in voice_info or 'hazel' in voice_info:
+                    self.tts_engine.setProperty('voice', voice.id)
+                    logger.info(f"Voice set to: {voice.name}")
+                    return
+            
+            logger.info("Using default voice (female voice not available)")
+        except Exception as e:
+            logger.warning(f"Could not set female voice: {e}")
     
     def play_sound(self, sound_file: Path, volume: float = AUDIO_VOLUME, 
                    fallback: bool = True) -> bool:
@@ -143,7 +170,30 @@ class AudioManager:
             
             logger.info(f"Speaking: {message}")
             self.tts_engine.say(message)
-            self.tts_engine.runAndWait()
+            
+            # Use startLoop instead of runAndWait to avoid threading issues
+            try:
+                self.tts_engine.runAndWait()
+            except RuntimeError as e:
+                # If run loop already started, try alternative approach
+                if "run loop already started" in str(e):
+                    # Create new engine instance for this speech
+                    import pyttsx3
+                    temp_engine = pyttsx3.init()
+                    temp_engine.setProperty("rate", rate if rate else self.tts_engine.getProperty("rate"))
+                    temp_engine.setProperty("volume", self.tts_engine.getProperty("volume"))
+                    
+                    # Try to set same voice
+                    try:
+                        temp_engine.setProperty('voice', self.tts_engine.getProperty('voice'))
+                    except:
+                        pass
+                    
+                    temp_engine.say(message)
+                    temp_engine.runAndWait()
+                    del temp_engine
+                else:
+                    raise
             
             if rate:
                 self.tts_engine.setProperty("rate", original_rate)
@@ -246,3 +296,87 @@ def get_time_based_greeting() -> str:
         return "Good evening"
     else:
         return "Good night"
+
+
+def speak_nigerian_greeting(name: str, context: str = "recognition") -> None:
+    """Speak name with greeting
+    
+    Args:
+        name: Person's name to announce
+        context: 'registration' or 'recognition'
+    """
+    greeting = get_time_based_greeting()
+    
+    if context == "registration":
+        # Registration greeting - warm welcome
+        message = f"{greeting} {name}! Welcome! Registration successful."
+    else:
+        # Recognition greeting - attendance confirmation
+        message = f"{greeting} {name}! Welcome! Your attendance has been marked successfully."
+    
+    # Queue the message for speaking
+    _queue_speech(message)
+
+
+def _queue_speech(message: str):
+    """Queue a message for speech in the worker thread"""
+    global _speech_worker_started
+    
+    _speech_queue.put(message)
+    
+    # Start worker thread if not already running
+    with _speech_lock:
+        if not _speech_worker_started:
+            _speech_worker_started = True
+            worker = threading.Thread(target=_speech_worker, daemon=True)
+            worker.start()
+
+
+def _speech_worker():
+    """Worker thread that processes speech queue"""
+    engine = None
+    
+    try:
+        # Initialize engine once in this thread
+        engine = pyttsx3.init()
+        engine.setProperty("rate", SPEECH_RATE)
+        engine.setProperty("volume", AUDIO_VOLUME)
+        
+        # Set female voice
+        try:
+            voices = engine.getProperty('voices')
+            for voice in voices:
+                if 'female' in voice.name.lower() or 'zira' in voice.name.lower():
+                    engine.setProperty('voice', voice.id)
+                    logger.info(f"Worker voice set to: {voice.name}")
+                    break
+        except Exception as e:
+            logger.warning(f"Could not set female voice in worker: {e}")
+        
+        # Process messages from queue
+        while True:
+            try:
+                message = _speech_queue.get(timeout=60)  # Wait up to 60 seconds
+                if message is None:  # Poison pill to stop worker
+                    break
+                
+                logger.info(f"Speaking from queue: {message}")
+                engine.say(message)
+                engine.runAndWait()
+                
+            except queue.Empty:
+                # No messages for 60 seconds, stop worker
+                break
+            except Exception as e:
+                logger.error(f"Error in speech worker: {e}")
+    
+    finally:
+        if engine:
+            try:
+                del engine
+            except:
+                pass
+        
+        global _speech_worker_started
+        with _speech_lock:
+            _speech_worker_started = False

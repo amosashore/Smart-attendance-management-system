@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 
 from face_utils import face_manager, FaceQualityChecker, FACE_RECOGNITION_AVAILABLE
-from audio_utils import audio_manager, play_chime, get_time_based_greeting
+from audio_utils import audio_manager, play_chime, get_time_based_greeting, speak_nigerian_greeting
 from database import db
 from logger import get_logger
 
@@ -268,10 +268,9 @@ def _process_registration(name: str, email: str, phone: str,
         st.success(f"✅ {message}")
         st.balloons()
         
-        # Audio feedback - Play sound and announce name with time-based greeting
-        greeting = get_time_based_greeting()
+        # Audio feedback - Play sound and announce name with Nigerian accent
         play_chime()
-        audio_manager.speak(f"Registration successful. {greeting} {name}, welcome onboard!")
+        speak_nigerian_greeting(name, context="registration")
         
         # Show summary
         with st.expander("📋 Registration Summary", expanded=True):

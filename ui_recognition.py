@@ -8,7 +8,7 @@ from datetime import datetime
 import time
 
 from face_utils import face_manager, FACE_RECOGNITION_AVAILABLE
-from audio_utils import audio_manager, play_chime, get_time_based_greeting
+from audio_utils import audio_manager, play_chime, get_time_based_greeting, speak_nigerian_greeting
 from config import CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, ALLOW_MULTIPLE_CHECKIN
 from database import db
 from logger import get_logger
@@ -103,7 +103,8 @@ def _single_capture_mode():
             
             if not results:
                 st.warning("⚠️ No faces detected in the image")
-                audio_manager.speak("No faces detected")
+                from audio_utils import _queue_speech
+                _queue_speech("No faces detected")
             else:
                 _process_recognition_results(results, image)
 
@@ -174,7 +175,7 @@ def _process_recognition_results(results: list, image: np.ndarray):
             color = (0, 0, 255)  # Red
             unknown_count += 1
         else:
-            color = (0, 255, 0)  # Green
+            color = (0, 128, 0)  # Darker green
             recognized_count += 1
         
         # Draw rectangle
@@ -209,14 +210,22 @@ def _process_recognition_results(results: list, image: np.ndarray):
             if success:
                 attendance_marked.append(result['name'])
                 st.success(f"✅ {message}")
-                # Play sound and announce person's name with time-based greeting
+                # Play sound and announce with female voice
+                import time
                 play_chime()
-                audio_manager.speak(f"{greeting} {result['name']}, attendance marked successfully!")
+                time.sleep(0.5)  # Small delay between chime and speech
+                speak_nigerian_greeting(result['name'], context="recognition")
+                logger.info(f"Audio announcement triggered for {result['name']}")
             else:
                 st.info(f"ℹ️ {message}")
                 # Still announce the person even if already marked today
                 if "already marked" in message.lower():
-                    audio_manager.speak(f"{greeting} {result['name']}, your attendance is already recorded for today.")
+                    play_chime()
+                    import time
+                    time.sleep(0.5)
+                    from audio_utils import _queue_speech
+                    _queue_speech(f"{greeting} {result['name']}! Your attendance is already recorded for today.")
+                    logger.info(f"Already marked announcement for {result['name']}")
     
     # Summary
     if attendance_marked:
@@ -274,16 +283,20 @@ def _run_live_recognition(duration: int, interval: int):
                         with results_container:
                             st.success(f"✅ {result['name']} - Attendance marked")
                         
-                        # Play sound and announce person's name with time-based greeting
+                        # Play sound and announce with female voice
                         play_chime()
-                        audio_manager.speak(f"{greeting} {result['name']}, attendance marked successfully!")
+                        speak_nigerian_greeting(result['name'], context="recognition")
                     else:
                         # Mark as recognized even if attendance already marked
                         recognized_faces.add(result['name'])
                         with results_container:
                             st.info(f"ℹ️ {result['name']} - {message}")
-                        # Still announce the person with time-based greeting
-                        audio_manager.speak(f"{greeting} {result['name']}.")
+                        # Still announce the person
+                        play_chime()
+                        from audio_utils import _queue_speech
+                        import time
+                        time.sleep(0.5)
+                        _queue_speech(f"{greeting} {result['name']}! Welcome.")
         
         time.sleep(interval)
     
