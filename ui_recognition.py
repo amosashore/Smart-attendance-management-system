@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 def recognition_ui():
     """Face recognition and attendance marking page"""
-    st.title("🎥 Real-Time Face Recognition")
+    st.title("🎥 AMOS Real-Time Face Recognition")
     
     # Check if face_recognition is available
     if not FACE_RECOGNITION_AVAILABLE:

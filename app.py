@@ -64,7 +64,7 @@ def initialize_app():
             play_chime()
             greeting = get_time_based_greeting()
             from audio_utils import _queue_speech
-            _queue_speech(f"{greeting}! Welcome to the Smart Attendance System. Please log in to continue.")
+            _queue_speech(f"{greeting}! Welcome to Amos Smart Attendance System. Please log in to continue.")
         
         return True
     except Exception as e:
