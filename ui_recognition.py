@@ -1,5 +1,5 @@
 """
-Enhanced real-time face recognition UI with live feedback
+Enhanced real-time face recognition UI with live feedback and emotion detection
 """
 import streamlit as st
 import cv2
@@ -8,7 +8,8 @@ from datetime import datetime
 import time
 
 from face_utils import face_manager, FACE_RECOGNITION_AVAILABLE
-from audio_utils import audio_manager, play_chime, get_time_based_greeting, speak_nigerian_greeting
+from audio_utils import audio_manager, play_chime, get_time_based_greeting, speak_nigerian_greeting, speak_emotion_greeting
+from emotion_detector import emotion_detector
 from config import CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, ALLOW_MULTIPLE_CHECKIN
 from database import db
 from logger import get_logger
@@ -156,12 +157,15 @@ def _capture_image() -> np.ndarray:
 
 
 def _process_recognition_results(results: list, image: np.ndarray):
-    """Process and display recognition results"""
+    """Process and display recognition results with emotion detection"""
     recognized_count = 0
     unknown_count = 0
     
     # Draw boxes on image
     annotated_image = image.copy()
+    
+    # Store emotion data for each recognized person
+    emotion_data = {}
     
     for result in results:
         name = result['name']
@@ -169,6 +173,12 @@ def _process_recognition_results(results: list, image: np.ndarray):
         location = result['location']
         
         top, right, bottom, left = location
+        
+        # Detect emotion for recognized faces
+        emotion_result = None
+        if name != "Unknown":
+            emotion_result = emotion_detector.detect_emotion(image, location)
+            emotion_data[name] = emotion_result
         
         # Determine color
         if name == "Unknown":
@@ -181,15 +191,19 @@ def _process_recognition_results(results: list, image: np.ndarray):
         # Draw rectangle
         cv2.rectangle(annotated_image, (left, top), (right, bottom), color, 2)
         
-        # Draw label
-        label = f"{name} ({confidence:.1%})" if name != "Unknown" else "Unknown"
+        # Draw label with emotion if available
+        if name != "Unknown" and emotion_result:
+            label = f"{name} ({confidence:.1%}) - {emotion_result['emotion']}"
+        else:
+            label = f"{name} ({confidence:.1%})" if name != "Unknown" else "Unknown"
+        
         cv2.rectangle(annotated_image, (left, bottom - 35), (right, bottom), color, cv2.FILLED)
         cv2.putText(annotated_image, label, (left + 6, bottom - 6),
                    cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
     
     # Display annotated image
     st.image(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB), 
-             caption="Recognition Results", use_container_width=True)
+             caption="Recognition Results with Emotion Detection", use_container_width=True)
     
     # Display results
     st.write(f"**Detected:** {len(results)} face(s)")
@@ -207,17 +221,20 @@ def _process_recognition_results(results: list, image: np.ndarray):
                 result['confidence']
             )
             
+            # Get emotion for this person
+            emotion = emotion_data.get(result['name'], {}).get('emotion', 'neutral')
+            
             if success:
                 attendance_marked.append(result['name'])
-                st.success(f"✅ {message}")
-                # Play sound and announce with female voice
+                st.success(f"✅ {message} | Emotion: {emotion.title()}")
+                # Play sound and announce with emotion-based greeting
                 import time
                 play_chime()
                 time.sleep(0.5)  # Small delay between chime and speech
-                speak_nigerian_greeting(result['name'], context="recognition")
-                logger.info(f"Audio announcement triggered for {result['name']}")
+                speak_emotion_greeting(result['name'], emotion, context="recognition")
+                logger.info(f"Audio announcement triggered for {result['name']} (emotion: {emotion})")
             else:
-                st.info(f"ℹ️ {message}")
+                st.info(f"ℹ️ {message} | Emotion: {emotion.title()}")
                 # Still announce the person even if already marked today
                 if "already marked" in message.lower():
                     play_chime()
@@ -231,7 +248,8 @@ def _process_recognition_results(results: list, image: np.ndarray):
     if attendance_marked:
         with st.expander("📋 Attendance Summary", expanded=True):
             for name in attendance_marked:
-                st.write(f"✓ {name}")
+                emotion = emotion_data.get(name, {}).get('emotion', 'neutral')
+                st.write(f"✓ {name} - Emotion: {emotion.title()}")
     
     # Show individual results
     with st.expander("🔍 Detailed Results"):
@@ -240,6 +258,10 @@ def _process_recognition_results(results: list, image: np.ndarray):
             st.write(f"- Name: {result['name']}")
             st.write(f"- Confidence: {result['confidence']:.1%}")
             st.write(f"- Distance: {result['distance']:.3f}")
+            if result['name'] in emotion_data:
+                emotion_info = emotion_data[result['name']]
+                st.write(f"- Emotion: {emotion_info['emotion'].title()}")
+                st.write(f"- Emotion Confidence: {emotion_info['confidence']:.1%}")
             st.divider()
 
 
@@ -272,6 +294,10 @@ def _run_live_recognition(duration: int, interval: int):
             
             for result in results:
                 if result['name'] != "Unknown" and result['name'] not in recognized_faces:
+                    # Detect emotion
+                    emotion_result = emotion_detector.detect_emotion(image, result['location'])
+                    emotion = emotion_result['emotion']
+                    
                     success, message = face_manager.mark_attendance(
                         result['name'],
                         result['confidence']
@@ -281,17 +307,19 @@ def _run_live_recognition(duration: int, interval: int):
                         recognized_faces.add(result['name'])
                         
                         with results_container:
-                            st.success(f"✅ {result['name']} - Attendance marked")
+                            st.success(f"✅ {result['name']} - Attendance marked | Emotion: {emotion.title()}")
                         
-                        # Play sound and announce with female voice
+                        # Play sound and announce with emotion-based greeting
                         play_chime()
-                        speak_nigerian_greeting(result['name'], context="recognition")
+                        import time
+                        time.sleep(0.5)
+                        speak_emotion_greeting(result['name'], emotion, context="recognition")
                     else:
                         # Mark as recognized even if attendance already marked
                         recognized_faces.add(result['name'])
                         with results_container:
-                            st.info(f"ℹ️ {result['name']} - {message}")
-                        # Still announce the person
+                            st.info(f"ℹ️ {result['name']} - {message} | Emotion: {emotion.title()}")
+                        # Still announce the person with emotion
                         play_chime()
                         from audio_utils import _queue_speech
                         import time

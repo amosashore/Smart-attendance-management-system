@@ -318,6 +318,27 @@ def speak_nigerian_greeting(name: str, context: str = "recognition") -> None:
     _queue_speech(message)
 
 
+def speak_emotion_greeting(name: str, emotion: str, context: str = "recognition") -> None:
+    """Speak greeting based on detected emotion
+    
+    Args:
+        name: Person's name to announce
+        emotion: Detected emotion (happy, sad, angry, etc.)
+        context: 'registration' or 'recognition'
+    """
+    from emotion_detector import emotion_detector
+    
+    if context == "registration":
+        # For registration, use standard greeting
+        message = f"{get_time_based_greeting()} {name}! Welcome! Registration successful."
+    else:
+        # For recognition, use emotion-based greeting
+        message = emotion_detector.get_emotion_greeting(emotion, name)
+    
+    # Queue the message for speaking
+    _queue_speech(message)
+
+
 def _queue_speech(message: str):
     """Queue a message for speech in the worker thread"""
     global _speech_worker_started
