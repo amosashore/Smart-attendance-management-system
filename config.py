@@ -36,7 +36,7 @@ FACE_QUALITY_THRESHOLD = float(os.getenv("FACE_QUALITY_THRESHOLD", "30.0"))
 # Audio settings
 CHIME_PATH = ASSETS_DIR / "chime.mp3"
 ENABLE_AUDIO = os.getenv("ENABLE_AUDIO", "true").lower() == "true"
-SPEECH_RATE = int(os.getenv("SPEECH_RATE", "150"))
+SPEECH_RATE = int(os.getenv("SPEECH_RATE", "170"))
 AUDIO_VOLUME = float(os.getenv("AUDIO_VOLUME", "0.7"))
 
 # Attendance settings

@@ -1,5 +1,5 @@
 """
-Enhanced audio utilities with better error handling and fallback mechanisms
+Enhanced audio utilities with gTTS for better quality speech
 """
 import pyttsx3
 import pygame
@@ -8,6 +8,14 @@ from pathlib import Path
 from typing import Optional
 import time
 import queue
+import tempfile
+import os
+
+try:
+    from gtts import gTTS
+    GTTS_AVAILABLE = True
+except ImportError:
+    GTTS_AVAILABLE = False
 
 from config import CHIME_PATH, ENABLE_AUDIO, SPEECH_RATE, AUDIO_VOLUME
 from logger import get_logger
@@ -26,6 +34,9 @@ except Exception as e:
 _speech_queue = queue.Queue()
 _speech_worker_started = False
 _speech_lock = threading.Lock()
+
+# Speech engine preference: 'gtts' or 'pyttsx3'
+PREFERRED_ENGINE = 'gtts' if GTTS_AVAILABLE else 'pyttsx3'
 
 
 class AudioManager:
@@ -267,6 +278,45 @@ class AudioManager:
             return []
 
 
+def get_audio_system_info() -> dict:
+    """Get information about the audio system
+    
+    Returns:
+        Dictionary with audio system status
+    """
+    return {
+        'enabled': ENABLE_AUDIO,
+        'preferred_engine': PREFERRED_ENGINE,
+        'gtts_available': GTTS_AVAILABLE,
+        'pygame_available': PYGAME_AVAILABLE,
+        'pyttsx3_available': audio_manager.tts_engine is not None,
+        'speech_rate': SPEECH_RATE,
+        'volume': AUDIO_VOLUME,
+        'chime_available': CHIME_PATH.exists() if CHIME_PATH else False
+    }
+
+
+def set_speech_engine(engine: str):
+    """Set preferred speech engine
+    
+    Args:
+        engine: 'gtts' or 'pyttsx3'
+    """
+    global PREFERRED_ENGINE
+    
+    if engine == 'gtts' and not GTTS_AVAILABLE:
+        logger.warning("gTTS not available, keeping current engine")
+        return False
+    
+    if engine in ['gtts', 'pyttsx3']:
+        PREFERRED_ENGINE = engine
+        logger.info(f"Speech engine set to: {engine}")
+        return True
+    
+    logger.warning(f"Unknown engine: {engine}")
+    return False
+
+
 # Global audio manager instance
 audio_manager = AudioManager()
 
@@ -343,6 +393,15 @@ def _queue_speech(message: str):
     """Queue a message for speech in the worker thread"""
     global _speech_worker_started
     
+    if not ENABLE_AUDIO:
+        logger.debug("Audio is disabled, skipping speech")
+        return
+    
+    if not message or not message.strip():
+        logger.warning("Empty message, skipping speech")
+        return
+    
+    logger.info(f"Queuing speech message: {message}")
     _speech_queue.put(message)
     
     # Start worker thread if not already running
@@ -351,28 +410,30 @@ def _queue_speech(message: str):
             _speech_worker_started = True
             worker = threading.Thread(target=_speech_worker, daemon=True)
             worker.start()
+            logger.info("Speech worker thread started")
 
 
 def _speech_worker():
-    """Worker thread that processes speech queue"""
+    """Worker thread that processes speech queue with gTTS"""
     engine = None
     
     try:
-        # Initialize engine once in this thread
-        engine = pyttsx3.init()
-        engine.setProperty("rate", SPEECH_RATE)
-        engine.setProperty("volume", AUDIO_VOLUME)
-        
-        # Set female voice
-        try:
-            voices = engine.getProperty('voices')
-            for voice in voices:
-                if 'female' in voice.name.lower() or 'zira' in voice.name.lower():
-                    engine.setProperty('voice', voice.id)
-                    logger.info(f"Worker voice set to: {voice.name}")
-                    break
-        except Exception as e:
-            logger.warning(f"Could not set female voice in worker: {e}")
+        if PREFERRED_ENGINE == 'pyttsx3':
+            # Initialize pyttsx3 engine once in this thread
+            engine = pyttsx3.init()
+            engine.setProperty("rate", SPEECH_RATE)
+            engine.setProperty("volume", AUDIO_VOLUME)
+            
+            # Set female voice
+            try:
+                voices = engine.getProperty('voices')
+                for voice in voices:
+                    if 'female' in voice.name.lower() or 'zira' in voice.name.lower():
+                        engine.setProperty('voice', voice.id)
+                        logger.info(f"Worker voice set to: {voice.name}")
+                        break
+            except Exception as e:
+                logger.warning(f"Could not set female voice in worker: {e}")
         
         # Process messages from queue
         while True:
@@ -382,8 +443,14 @@ def _speech_worker():
                     break
                 
                 logger.info(f"Speaking from queue: {message}")
-                engine.say(message)
-                engine.runAndWait()
+                
+                if PREFERRED_ENGINE == 'gtts' and GTTS_AVAILABLE:
+                    # Use gTTS for better quality
+                    _speak_with_gtts(message)
+                elif engine:
+                    # Fallback to pyttsx3
+                    engine.say(message)
+                    engine.runAndWait()
                 
             except queue.Empty:
                 # No messages for 60 seconds, stop worker
@@ -401,3 +468,53 @@ def _speech_worker():
         global _speech_worker_started
         with _speech_lock:
             _speech_worker_started = False
+
+
+def _speak_with_gtts(message: str, lang: str = 'en', slow: bool = False):
+    """Speak message using Google Text-to-Speech
+    
+    Args:
+        message: Text to speak
+        lang: Language code (default: 'en' for English)
+        slow: Speak slowly for better clarity
+    """
+    try:
+        # Create temporary file for audio
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, f"gtts_{int(time.time() * 1000)}.mp3")
+        
+        # Generate speech
+        tts = gTTS(text=message, lang=lang, slow=slow)
+        tts.save(temp_file)
+        
+        # Play the audio file
+        if PYGAME_AVAILABLE:
+            try:
+                pygame.mixer.music.load(temp_file)
+                pygame.mixer.music.set_volume(AUDIO_VOLUME)
+                pygame.mixer.music.play()
+                
+                # Wait for playback to finish
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
+                
+                pygame.mixer.music.unload()
+            except Exception as e:
+                logger.error(f"Pygame playback error: {e}")
+        
+        # Clean up temp file
+        try:
+            if os.path.exists(temp_file):
+                time.sleep(0.2)  # Small delay before deletion
+                os.unlink(temp_file)
+        except Exception as e:
+            logger.warning(f"Could not delete temp file {temp_file}: {e}")
+            
+    except Exception as e:
+        logger.error(f"gTTS error: {e}")
+        # Fallback to system beep
+        try:
+            import winsound
+            winsound.MessageBeep()
+        except:
+            pass

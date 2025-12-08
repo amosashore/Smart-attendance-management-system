@@ -50,6 +50,12 @@ def initialize_app():
     try:
         # Initialize database
         initialize_db()
+        
+        # Log audio system info
+        from audio_utils import get_audio_system_info
+        audio_info = get_audio_system_info()
+        logger.info(f"Audio System: {audio_info['preferred_engine']} (gTTS: {audio_info['gtts_available']}, pyttsx3: {audio_info['pyttsx3_available']})")
+        
         logger.info("Application initialized successfully")
         
         # Validate configuration
@@ -122,6 +128,15 @@ def render_sidebar():
             st.caption(f"**Date:** {datetime.now().strftime('%Y-%m-%d')}")
             st.caption(f"**Time:** {datetime.now().strftime('%H:%M:%S')}")
             st.caption(f"**Version:** 2.0")
+            
+            # Audio system info
+            from audio_utils import get_audio_system_info
+            audio_info = get_audio_system_info()
+            if audio_info['enabled']:
+                engine_name = "Google TTS" if audio_info['preferred_engine'] == 'gtts' else "Microsoft TTS"
+                st.caption(f"**Audio:** {engine_name} {'✅' if audio_info['gtts_available'] or audio_info['pyttsx3_available'] else '❌'}")
+            else:
+                st.caption("**Audio:** Disabled")
         
         return choice
 

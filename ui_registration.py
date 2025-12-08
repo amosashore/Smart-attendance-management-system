@@ -268,9 +268,12 @@ def _process_registration(name: str, email: str, phone: str,
         st.success(f"✅ {message}")
         st.balloons()
         
-        # Audio feedback - Play sound and announce name with Nigerian accent
+        # Audio feedback - Play sound and announce name with greeting
+        import time
         play_chime()
+        time.sleep(0.5)  # Small delay between chime and speech
         speak_nigerian_greeting(name, context="registration")
+        logger.info(f"Audio announcement triggered for registration: {name}")
         
         # Show summary
         with st.expander("📋 Registration Summary", expanded=True):
